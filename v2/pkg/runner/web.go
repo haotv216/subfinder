@@ -1,9 +1,9 @@
 package runner
 
 import (
-	"encoding/json"
 	"net/http"
 
+	"github.com/gin-gonic/gin"
 	"github.com/projectdiscovery/gologger"
 )
 
@@ -19,33 +19,32 @@ func NewAPIServer(runner *Runner) *APIServer {
 
 // Start starts the API server
 func (api *APIServer) Start(port string) {
-	http.HandleFunc("/dns/api/enumerate", api.handleEnumerate)
+	router := gin.Default()
+
+	// Define routes
+	router.POST("/dns/api/enumerate", api.handleEnumerate)
 
 	gologger.Info().Msgf("API server is running on port %s", port)
 
-	if err := http.ListenAndServe(":"+port, nil); err != nil {
+	if err := router.Run(":" + port); err != nil {
 		gologger.Fatal().Msgf("Failed to start server: %s", err)
 	}
 }
 
 // handleEnumerate handles the enumeration endpoint
-func (api *APIServer) handleEnumerate(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
-		return
-	}
-
+func (api *APIServer) handleEnumerate(c *gin.Context) {
 	var request struct {
 		Domains []string `json:"domains"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+	// Bind JSON body to the struct
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
 
 	if len(request.Domains) == 0 {
-		http.Error(w, "No domains provided", http.StatusBadRequest)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No domains provided"})
 		return
 	}
 
@@ -56,14 +55,7 @@ func (api *APIServer) handleEnumerate(w http.ResponseWriter, r *http.Request) {
 		output[domain] = results
 	}
 
-	response, err := json.Marshal(output)
-	if err != nil {
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(response)
+	c.JSON(http.StatusOK, output)
 }
 
 // enumerateDomain processes a single domain (stub example)
